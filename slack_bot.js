@@ -36,6 +36,12 @@ if (!process.env.SLACK_BOT_WEBHOOK) {
     process.exit(1);
 }
 
+// Persistent datastore with automatic loading
+var Datastore = require('nedb')
+  , db = new Datastore({ filename: 'db', autoload: true });
+// You can issue commands right away
+
+
 var Botkit = require('botkit');
 var os = require('os');
 
@@ -51,18 +57,57 @@ var bot = controller.spawn({
 
 // Run a simple web server for slack commands
 
-
-controller.hears(['call me (.*)', 'my name is (.*)'], 'direct_message,direct_mention,mention', function(bot, message) {
-    var name = message.match[1];
-    controller.storage.users.get(message.user, function(err, user) {
-        if (!user) {
-            user = {
-                id: message.user,
-            };
-        }
-        user.name = name;
-        controller.storage.users.save(user, function(err, id) {
-            bot.reply(message, 'Got it. I will call you ' + user.name + ' from now on.');
+controller.hears(['add (.*) to (the )?(.*) list'], 'direct_message', function (bot, message) {
+    var user = message.user;
+    var team = message.team;
+    var item = message.match[1];
+    var list = message.match[3].toLowerCase();
+    var doc = {
+        item: item,
+        list: list,
+        user: user,
+        team: team
+    };
+    db.insert(doc, function (err, newDoc) {
+        db.find({list: list}, function (err, docs) {
+            bot.reply(message, 'Here is the ' + list + ' list: ' + docs.map(function (elem) {
+                return elem.item;
+            }).join(', '));
         });
     });
+});
+
+controller.hears(['remove (.*) from (the )?(.*) list'], 'direct_message', function (bot, message) {
+    var item = message.match[1];
+    var list = message.match[3].toLowerCase();
+    var user = message.user;
+    var team = message.team;
+    var doc = {
+        item: item,
+        list: list,
+        user: user,
+        team: team
+    };
+    db.remove(doc, function (err, newDoc) {
+        db.find({list: list}, function (err, docs) {
+            bot.reply(message, 'Here is the ' + list + ' list: ' + docs.map(function (elem) {
+                return elem.item;
+            }).join(', '));
+        });
+    });
+});
+
+controller.hears(['show me (the )?(.*) list'], 'direct_message', function (bot, message) {
+    var list = message.match[2].toLowerCase();
+    var user = message.user;
+    var team = message.team;
+    db.find({list: list, user: user, team: team}, function (err, docs) {
+        bot.reply(message, 'Here is the ' + list + ' list: ' + docs.map(function (elem) {
+            return elem.item;
+        }).join(', '));
+    });
+});
+
+controller.hears('(.*)', 'direct_message', function (bot, message) {
+    console.log(message);
 });
